@@ -29,6 +29,9 @@ graph TD
 * **🧠 Self-Correcting Reflection Module:** Captures the screen post-execution, reviews the visual output, and validates if the task actually succeeded—preventing false positives.
 * **🎙️ Voice Activated (Wake Word):** Features continuous speech recognition with native web speech APIs and fallback local model listeners (`vosk`) to listen to wake commands (e.g., *"Hey AURA"*).
 * **🧠 Vector Memory System:** Integrated SQLite and FAISS semantic memory to remember past commands and interactions.
+* **⚙️ SaaS Multi-User Connection Panel:** Allows any visitor to visit your live hosted Netlify dashboard, click the ⚙️ settings icon, enter their own backend API URL (like `http://127.0.0.1:8000/api`), and control their own local computer!
+* **🎭 Offline Demo/Simulation Mode:** Automatically boots into a beautiful, fully functional demo mode if your backend server is offline, simulating the AI planning and execution sequence so visitors can experience the UI seamlessly.
+* **🔌 One-Click Background Launchers:** Includes `run_aura_remote.bat` for instant server & ngrok tunnel startup on your static domain, and `run_aura_hidden.vbs` to run the entire backend silently in the background with zero terminal clutter.
 
 ---
 

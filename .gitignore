@@ -1,0 +1,35 @@
+# Virtual environments
+venv/
+ENV/
+env/
+.env
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Vosk acoustic models (Heavy Binaries, download dynamically)
+voice/vosk_model/
+
+# SQLite databases & indices
+database/*.db
+database/*.json
+
+# Secrets & Local Configurations
+.env
+*.env
+.env.local
+.env.*.local
+
+# OS junk files
+.DS_Store
+Thumbs.db
+
+# Build artifacts & temp files
+dist/
+build/
+*.spec
+temp/
+*.log

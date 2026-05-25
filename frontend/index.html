@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA Core Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CACHE BUSTER ADDED -->
+    <link rel="stylesheet" href="style.css?v=10"> 
+</head>
+<body>
+    <!-- Ambient glowing backgrounds -->
+    <div class="glow bg-glow-left"></div>
+    <div class="glow bg-glow-right"></div>
+
+    <div class="app-layout">
+        
+        <!-- ================= LEFT: CONTROLS & HISTORY ================= -->
+        <aside class="panel left-panel">
+            <div class="brand">
+                <div class="logo">AURA<span class="dot">.</span></div>
+                <div class="subtitle">Autonomous Core v2</div>
+                <button id="btn-settings" class="settings-trigger-btn" title="Connection Settings"><i class="fas fa-cog"></i></button>
+            </div>
+
+            <!-- Voice Controls -->
+            <div class="module voice-module">
+                <h3><i class="fas fa-microphone-alt"></i> Voice Architecture</h3>
+                
+                <div class="status-box">
+                    <span id="status-dot" class="dot idle"></span>
+                    <span id="status-text">System Ready</span>
+                </div>
+
+                <button id="btn-listen" class="action-btn primary-btn">
+                    <i class="fas fa-play"></i> Tap to Speak
+                </button>
+
+                <button id="btn-wake-toggle" class="action-btn secondary-btn">
+                    <i class="fas fa-satellite-dish"></i> Wake Word: <span>OFF</span>
+                </button>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Task History -->
+            <div class="module history-module">
+                <div class="module-header">
+                    <h3><i class="fas fa-history"></i> Task History</h3>
+                    <button id="btn-refresh" class="icon-btn"><i class="fas fa-sync-alt"></i></button>
+                </div>
+                <div class="scroll-area" id="history-list">
+                    <!-- Dynamic Items -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- ================= CENTER: AI VISUAL ORB & CHAT ================= -->
+        <main class="panel center-panel">
+            
+            <!-- Voice Confirmation Banner -->
+            <div id="voice-confirm-banner" class="voice-confirm hidden">
+                <div class="vc-icon"><i class="fas fa-wave-square"></i></div>
+                <div class="vc-text">
+                    <div class="vc-title">Voice Detected</div>
+                    <div id="voice-confirm-text" class="vc-cmd">"..."</div>
+                </div>
+                <div class="vc-actions">
+                    <button id="btn-voice-confirm" class="vc-btn accept"><i class="fas fa-check"></i></button>
+                    <button id="btn-voice-reject" class="vc-btn reject"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+
+            <!-- Orb Visualizer -->
+            <div class="orb-area">
+                <div id="three-container"></div>
+            </div>
+
+            <!-- Chat / Interaction Feed -->
+            <div class="chat-area" id="chat-container">
+                <div class="empty-state">
+                    <i class="fas fa-microchip"></i>
+                    <h2>AURA is Online</h2>
+                    <p>Use voice or terminal to execute commands on your desktop.</p>
+                </div>
+                <!-- Chat Bubbles -->
+            </div>
+
+            <!-- Input Box -->
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="cmd-input" placeholder="Give AURA a command..." autocomplete="off">
+                    <button id="btn-send" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </main>
+
+        <!-- ================= RIGHT: TELEMETRY & LOGS ================= -->
+        <aside class="panel right-panel">
+            
+            <!-- Live Telemetry -->
+            <div class="module sys-module">
+                <h3><i class="fas fa-server"></i> System Telemetry</h3>
+                
+                <div class="stat-row">
+                    <div class="stat-label">CPU LOAD <span id="cpu-text" class="stat-pct">0%</span></div>
+                    <div class="stat-bar"><div id="cpu-fill" class="stat-fill cpu"></div></div>
+                </div>
+
+                <div class="stat-row">
+                    <div class="stat-label">MEMORY <span id="ram-text" class="stat-pct">0%</span></div>
+                    <div class="stat-bar"><div id="ram-fill" class="stat-fill ram"></div></div>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Terminal Logs -->
+            <div class="module log-module">
+                <h3><i class="fas fa-terminal"></i> Core Logs</h3>
+                <div class="scroll-area logs custom-scrollbar" id="logs-container">
+                    <!-- Logs appended here -->
+                </div>
+            </div>
+
+        </aside>
+    </div>
+
+    <!-- Connection Settings Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-cog"></i> Connection Settings</h2>
+                <button id="btn-close-settings" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>To control your own desktop, run your local backend server and enter your connection URL below.</p>
+                <div class="input-group">
+                    <label for="settings-api-url">Backend API Endpoint</label>
+                    <input type="text" id="settings-api-url" placeholder="http://127.0.0.1:8000/api">
+                </div>
+                <div class="modal-tips">
+                    <strong>💡 Tips:</strong>
+                    <ul>
+                        <li>Use <code>http://127.0.0.1:8000/api</code> for local testing.</li>
+                        <li>Use your public <code>ngrok</code> URL (e.g. <code>https://yourdomain.ngrok-free.app/api</code>) to access it remotely.</li>
+                        <li>Leave blank or type "demo" to use the interactive offline Demo Mode.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-reset-settings" class="action-btn secondary-btn">Reset Default</button>
+                <button id="btn-save-settings" class="action-btn primary-btn">Save & Reconnect</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="three_scene.js"></script>
+    <script src="main.js?v=6"></script>
+</body>
+</html>
