@@ -10,7 +10,7 @@ class GeminiClient:
     def __init__(self):
         self.api_key = GEMINI_API_KEY
         self.model = "gemini-1.5-flash"
-        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        self.url = f"https://generativelanguage.googleapis.com/v1/models/{self.model}:generateContent"
 
     def is_available(self) -> bool:
         """Check if the Gemini API key is configured."""
