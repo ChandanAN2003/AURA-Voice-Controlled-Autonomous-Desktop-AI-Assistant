@@ -597,6 +597,49 @@ class Planner:
             {"action": "press", "key": "enter"}
         ])
         
+        # 3. If file is found recursively, open it directly!
+        if folder_path != "explorer":
+            found_path = self._find_file_recursively(folder_path, query)
+            if found_path:
+                logger.info(f"File found recursively at: {found_path}. Appending open_file to plan.")
+                plan.extend([
+                    {"action": "wait", "seconds": 1.0},
+                    {"action": "open_file", "path": found_path}
+                ])
+                
         return plan
+
+    def _find_file_recursively(self, folder_path: str, search_query: str) -> str | None:
+        """
+        Recursively searches for a file matching search_query inside folder_path.
+        Returns the absolute path if found, or None.
+        """
+        if not os.path.exists(folder_path):
+            return None
+            
+        query_clean = search_query.lower().replace(" ", "")
+        
+        try:
+            for root, dirs, files in os.walk(folder_path):
+                # Prevent scanning too deep (max 3 levels) to keep it extremely fast
+                rel_depth = len(root.split(os.sep)) - len(folder_path.split(os.sep))
+                if rel_depth > 3:
+                    continue
+                    
+                for file in files:
+                    file_clean = file.lower().replace(" ", "")
+                    # Get base name without extension
+                    base, ext = os.path.splitext(file)
+                    base_clean = base.lower().replace(" ", "")
+                    
+                    if file_clean == query_clean or base_clean == query_clean:
+                        return os.path.join(root, file)
+                    if query_clean in file_clean or file_clean in query_clean:
+                        return os.path.join(root, file)
+        except Exception as e:
+            logger.error(f"Error recursively searching for file: {e}")
+            
+        return None
+
 
 
