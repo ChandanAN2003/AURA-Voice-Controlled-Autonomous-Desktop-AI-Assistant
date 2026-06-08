@@ -501,8 +501,8 @@ class Planner:
         """
         cmd_lower = command.lower().strip()
         
-        # 1. Pattern: "open <folder> and search for/find <query>"
-        pattern1 = r"open\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)\s+(?:and\s+)?(?:search\s+for|find)\s+(.+)"
+        # 1. Pattern: "open <folder> and [search for/search/find/open] <query>"
+        pattern1 = r"open\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)\s+(?:and\s+)?(?:search\s+for|search|find|open)\s+(.+)"
         match = re.search(pattern1, cmd_lower)
         if match:
             folder_name = match.group(1).strip()
@@ -511,8 +511,8 @@ class Planner:
             query = command[start_idx:].strip()
             return self._build_search_plan(folder_name, query)
 
-        # 2. Pattern: "(?:search\s+for|find)\s+(.+)\s+in\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)"
-        pattern2 = r"(?:search\s+for|find)\s+(.+?)\s+in\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)"
+        # 2. Pattern: "[search for/search/find/open] <query> in <folder>"
+        pattern2 = r"(?:search\s+for|search|find|open)\s+(.+?)\s+in\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)"
         match = re.search(pattern2, cmd_lower)
         if match:
             folder_name = match.group(2).strip()
@@ -521,6 +521,27 @@ class Planner:
             end_idx = match.end(1)
             query = command[start_idx:end_idx].strip()
             return self._build_search_plan(folder_name, query)
+
+        # 3. Pattern: "open <folder>" or "open <folder> folder"
+        pattern3 = r"^open\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)(?:\s+folder)?$"
+        match = re.search(pattern3, cmd_lower)
+        if match:
+            folder_name = match.group(1).strip()
+            folder_paths = {
+                "downloads": os.path.expanduser("~/Downloads"),
+                "documents": os.path.expanduser("~/Documents"),
+                "desktop": os.path.expanduser("~/Desktop"),
+                "pictures": os.path.expanduser("~/Pictures"),
+                "videos": os.path.expanduser("~/Videos"),
+                "music": os.path.expanduser("~/Music"),
+                "this pc": "explorer",
+                "my computer": "explorer"
+            }
+            folder_path = folder_paths.get(folder_name, "explorer")
+            if folder_path == "explorer":
+                return [{"action": "open_app", "app": "explorer"}]
+            else:
+                return [{"action": "open_file", "path": folder_path}]
 
         return []
 
