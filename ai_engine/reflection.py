@@ -27,21 +27,21 @@ class ReflectionModule:
         End your response with exactly "STATUS: SUCCESS" or "STATUS: FAILED" on a new line.
         """
         
-        # Try Gemini API first (highly accurate, fast)
-        if self.gemini.is_available():
-            logger.info("Running task reflection via Gemini API...")
-            response = self.gemini.generate(prompt)
-            if response and not response.startswith("Error"):
-                return response
-            logger.warning(f"Reflection via Gemini failed: {response}")
-
-        # Fallback to Ollama
+        # Try local Ollama first
         if self.ollama.is_available():
             logger.info("Running task reflection via Ollama AI...")
             response = self.ollama.generate(prompt)
             if response and not response.startswith("Error"):
                 return response
             logger.warning(f"Reflection via Ollama failed: {response}")
+
+        # Fallback to Gemini API
+        if self.gemini.is_available():
+            logger.info("Running task reflection via Gemini API fallback...")
+            response = self.gemini.generate(prompt)
+            if response and not response.startswith("Error"):
+                return response
+            logger.warning(f"Reflection via Gemini failed: {response}")
 
         # If both fail, return default SUCCESS since the executor reported success
         return "STATUS: SUCCESS (Execution logs were successful; reflection models offline)"

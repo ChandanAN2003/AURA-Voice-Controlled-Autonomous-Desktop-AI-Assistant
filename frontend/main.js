@@ -1,5 +1,12 @@
-const DEFAULT_API = "https://handball-gown-bobtail.ngrok-free.dev/api";
-let API_BASE = localStorage.getItem("aura_api_base") || DEFAULT_API;
+const DEFAULT_API = (window.location.origin.includes("localhost") || window.location.origin.includes("127.0.0.1"))
+    ? window.location.origin + "/api"
+    : "http://127.0.0.1:8000/api";
+let cachedApi = localStorage.getItem("aura_api_base");
+if (cachedApi && (cachedApi.includes("ngrok") || cachedApi.includes("handball-gown-bobtail"))) {
+    localStorage.removeItem("aura_api_base");
+    cachedApi = null;
+}
+let API_BASE = cachedApi || DEFAULT_API;
 
 const chatContainer = document.getElementById("chat-container");
 const cmdInput = document.getElementById("cmd-input");

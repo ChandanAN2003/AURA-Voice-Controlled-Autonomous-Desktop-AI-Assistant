@@ -14,13 +14,13 @@ pyautogui.PAUSE = 0.4
 
 # Map common app names to Windows executable commands
 APP_COMMANDS = {
-    "chrome":        "start chrome",
-    "google chrome": "start chrome",
-    "brave":         "start brave",
-    "brave browser": "start brave",
+    "chrome":        "start chrome --disable-session-crashed-bubble --hide-crash-restore-bubble",
+    "google chrome": "start chrome --disable-session-crashed-bubble --hide-crash-restore-bubble",
+    "brave":         "start brave --disable-session-crashed-bubble --hide-crash-restore-bubble",
+    "brave browser": "start brave --disable-session-crashed-bubble --hide-crash-restore-bubble",
     "firefox":       "start firefox",
-    "msedge":        "start msedge",
-    "edge":          "start msedge",
+    "msedge":        "start msedge --disable-session-crashed-bubble --hide-crash-restore-bubble",
+    "edge":          "start msedge --disable-session-crashed-bubble --hide-crash-restore-bubble",
     "opera":         "start opera",
     "notepad":       "start notepad",
     "calc":          "start calc",
@@ -54,7 +54,8 @@ APP_COMMANDS = {
 
 class DesktopExecutor:
     def __init__(self):
-        pass
+        self.browser_open_count = 0
+        self.last_opened_app = None
 
     def execute_action(self, action_dict: dict) -> bool:
         """
@@ -95,6 +96,24 @@ class DesktopExecutor:
                     return False
                 try:
                     logger.info(f"Navigating browser to: {url}")
+                    
+                    # Direct launching optimization: If we just opened a browser, open the URL directly via shell.
+                    # This is 100% reliable, runs instantly, and bypasses focus or popup issues.
+                    last_app = getattr(self, "last_opened_app", None)
+                    if last_app in ["chrome", "brave", "firefox", "msedge", "edge", "google chrome", "brave browser", "mozilla firefox", "microsoft edge"]:
+                        exe_name = last_app
+                        if "chrome" in last_app: exe_name = "chrome"
+                        elif "brave" in last_app: exe_name = "brave"
+                        elif "firefox" in last_app: exe_name = "firefox"
+                        elif "edge" in last_app or "msedge" in last_app: exe_name = "msedge"
+                        
+                        logger.info(f"Directly opening URL in {exe_name} via command line: {url}")
+                        subprocess.Popen(f'start {exe_name} --disable-session-crashed-bubble --hide-crash-restore-bubble "{url}"', shell=True)
+                        self.last_opened_app = None  # Reset
+                        time.sleep(1.0)
+                        return True
+
+                    # Fallback to human keyboard simulation if the browser was already running
                     time.sleep(0.5)
                     pyautogui.hotkey("ctrl", "l")     # Focus address bar
                     time.sleep(0.4)
@@ -256,6 +275,12 @@ class DesktopExecutor:
     def _open_app(self, app_name: str) -> bool:
         """Open an application by name using Windows shell commands and verify execution."""
         logger.info(f"Opening app: {app_name}")
+        self.last_opened_app = app_name.lower().strip()
+
+        # Track browser opens
+        if any(b in self.last_opened_app for b in ["chrome", "brave", "firefox", "msedge", "edge", "browser"]):
+            self.browser_open_count += 1
+            logger.info(f"Tracked browser tab open. Current browser open count: {self.browser_open_count}")
 
         # Check if we have a direct shell command for it
         shell_cmd = APP_COMMANDS.get(app_name)
@@ -294,3 +319,50 @@ class DesktopExecutor:
         except Exception as e:
             logger.error(f"Failed to open app via Start menu: {e}")
             return False
+
+    def _check_and_update_browser_status(self):
+        """Reset browser_open_count to 0 if no browser processes are currently running."""
+        try:
+            browsers = ["chrome", "brave", "firefox", "msedge"]
+            any_running = False
+            for b in browsers:
+                if self._is_process_running(b):
+                    any_running = True
+                    break
+            if not any_running:
+                logger.info("No browser process running. Resetting browser_open_count to 0.")
+                self.browser_open_count = 0
+        except Exception as e:
+            logger.error(f"Error checking browser process status: {e}")
+
+    def close_old_browser_tab(self):
+        """
+        Closes the old tab (which is to the left of the current active tab) 
+        if we have multiple tabs open and the active window is a browser.
+        """
+        try:
+            import pygetwindow as gw
+            active_win = gw.getActiveWindow()
+            if not active_win:
+                logger.warning("No active window detected to close old tab.")
+                return
+
+            title = active_win.title.lower()
+            browsers = ["chrome", "brave", "edge", "firefox", "opera", "browser"]
+            is_browser_active = any(b in title for b in browsers)
+
+            if is_browser_active and self.browser_open_count > 1:
+                logger.info(f"Browser active ({active_win.title}) and browser_open_count={self.browser_open_count}. Closing old tab...")
+                # Switch to the tab on the left
+                pyautogui.hotkey("ctrl", "shift", "tab")
+                time.sleep(0.3)
+                # Close the old tab
+                pyautogui.hotkey("ctrl", "w")
+                time.sleep(0.3)
+                self.browser_open_count -= 1
+                logger.info(f"Old tab closed. New browser open count: {self.browser_open_count}")
+            else:
+                logger.info(f"Skip close old tab: is_browser_active={is_browser_active}, browser_open_count={self.browser_open_count}")
+        except Exception as e:
+            logger.error(f"Error in close_old_browser_tab: {e}")
+

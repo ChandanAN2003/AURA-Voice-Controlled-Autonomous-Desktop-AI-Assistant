@@ -92,6 +92,12 @@ class Planner:
         verb_count = sum(1 for verb in action_verbs if f" {verb} " in f" {cmd} ")
         
         if any(conj in cmd for conj in conjunctions) or verb_count >= 2:
+            # Let simple browser search/navigation commands pass to rule-based planner
+            is_simple_browser_cmd = ("search" in cmd or "navigate" in cmd or "google" in cmd or "go to" in cmd or "look up" in cmd) and \
+                                    any(b in cmd for b in ["chrome", "brave", "firefox", "edge", "msedge", "browser"])
+            if is_simple_browser_cmd:
+                return False
+                
             logger.info(f"Command '{command}' classified as COMPLEX (verb count: {verb_count}). Bypassing rule-based planner.")
             return True
             
@@ -105,6 +111,12 @@ class Planner:
         """
         logger.info(f"Generating plan for: {command}")
 
+        # Check for local file search command first to bypass LLM planning latency completely
+        search_plan = self._try_local_file_search(command)
+        if search_plan:
+            logger.info(f"Local file search matched instantly: {search_plan}")
+            return search_plan
+
         # 1. Try rule-based planner ONLY if command is NOT complex/compound
         if not self._is_complex_command(command):
             plan = self._rule_based_plan(command)
@@ -116,20 +128,7 @@ class Planner:
         response = None
         system_prompt = self._ai_prompt()
 
-        # Try Gemini API first (much faster, more powerful, requires no local server resources)
-        if self.gemini.is_available():
-            logger.info("Using cloud-based Gemini API for planning...")
-            response = self.gemini.generate(command, system_prompt=system_prompt)
-            if response and not response.startswith("Error"):
-                ai_plan = parse_json_safely(response)
-                if ai_plan:
-                    logger.info(f"Gemini plan generated successfully with {len(ai_plan)} steps.")
-                    return ai_plan
-                logger.warning(f"Could not parse Gemini response as JSON: {response[:200]}")
-            else:
-                logger.warning(f"Gemini API returned error or empty response: {response}")
-
-        # Fallback to local Ollama AI
+        # Try local Ollama AI first
         if self.ollama.is_available():
             logger.info("Using local Ollama AI for planning...")
             response = self.ollama.generate(command, system_prompt=system_prompt)
@@ -141,6 +140,19 @@ class Planner:
                 logger.warning(f"Could not parse Ollama response as JSON: {response[:200]}")
             else:
                 logger.warning(f"Ollama AI returned error or empty response: {response}")
+
+        # Fallback to cloud-based Gemini API
+        if self.gemini.is_available():
+            logger.info("Using cloud-based Gemini API for planning fallback...")
+            response = self.gemini.generate(command, system_prompt=system_prompt)
+            if response and not response.startswith("Error"):
+                ai_plan = parse_json_safely(response)
+                if ai_plan:
+                    logger.info(f"Gemini plan generated successfully with {len(ai_plan)} steps.")
+                    return ai_plan
+                logger.warning(f"Could not parse Gemini response as JSON: {response[:200]}")
+            else:
+                logger.warning(f"Gemini API returned error or empty response: {response}")
 
         # If both failed and rule-based wasn't run (because it was complex), try rule-based as a last-ditch effort
         if self._is_complex_command(command):
@@ -415,7 +427,7 @@ class Planner:
         """Extract what the user wants to search for."""
         triggers = [
             "search for ", "search ", "look up ", "google ",
-            "find ", "browse ", "go to ",
+            "find ", "browse ", "go to ", "navigate to ",
         ]
         for trigger in triggers:
             if trigger in cmd:
@@ -482,3 +494,88 @@ class Planner:
             {"action": "wait", "seconds": 2},
             {"action": "navigate_url", "url": yt_url},
         ]
+
+    def _try_local_file_search(self, command: str) -> list:
+        """
+        Match local file search commands and preserve original casing for query.
+        """
+        cmd_lower = command.lower().strip()
+        
+        # 1. Pattern: "open <folder> and search for/find <query>"
+        pattern1 = r"open\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)\s+(?:and\s+)?(?:search\s+for|find)\s+(.+)"
+        match = re.search(pattern1, cmd_lower)
+        if match:
+            folder_name = match.group(1).strip()
+            # Extract query from original command to preserve casing
+            start_idx = match.start(2)
+            query = command[start_idx:].strip()
+            return self._build_search_plan(folder_name, query)
+
+        # 2. Pattern: "(?:search\s+for|find)\s+(.+)\s+in\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)"
+        pattern2 = r"(?:search\s+for|find)\s+(.+?)\s+in\s+(downloads|documents|desktop|pictures|videos|music|this pc|my computer)"
+        match = re.search(pattern2, cmd_lower)
+        if match:
+            folder_name = match.group(2).strip()
+            # Extract query from original command to preserve casing
+            start_idx = match.start(1)
+            end_idx = match.end(1)
+            query = command[start_idx:end_idx].strip()
+            return self._build_search_plan(folder_name, query)
+
+        return []
+
+    def _build_search_plan(self, folder_name: str, query: str) -> list:
+        folder_paths = {
+            "downloads": os.path.expanduser("~/Downloads"),
+            "documents": os.path.expanduser("~/Documents"),
+            "desktop": os.path.expanduser("~/Desktop"),
+            "pictures": os.path.expanduser("~/Pictures"),
+            "videos": os.path.expanduser("~/Videos"),
+            "music": os.path.expanduser("~/Music"),
+            "this pc": "explorer",
+            "my computer": "explorer"
+        }
+        
+        folder_cmds = {
+            "downloads": '"%USERPROFILE%\\Downloads"',
+            "documents": '"%USERPROFILE%\\Documents"',
+            "desktop": '"%USERPROFILE%\\Desktop"',
+            "pictures": '"%USERPROFILE%\\Pictures"',
+            "videos": '"%USERPROFILE%\\Videos"',
+            "music": '"%USERPROFILE%\\Music"',
+            "this pc": '"%USERPROFILE%"',
+            "my computer": '"%USERPROFILE%"'
+        }
+        
+        cmd_dir = folder_cmds.get(folder_name, '"%USERPROFILE%"')
+        folder_path = folder_paths.get(folder_name, "explorer")
+        
+        plan = [
+            # 1. Automate CMD search
+            {"action": "open_app", "app": "cmd"},
+            {"action": "wait", "seconds": 1.5},
+            {"action": "type", "text": f"cd {cmd_dir}"},
+            {"action": "press", "key": "enter"},
+            {"action": "wait", "seconds": 0.5},
+            {"action": "type", "text": f'dir /s /b "*{query}*"'},
+            {"action": "press", "key": "enter"},
+            {"action": "wait", "seconds": 1.0},
+        ]
+        
+        # 2. Automate File Explorer search
+        if folder_path == "explorer":
+            plan.append({"action": "open_app", "app": "explorer"})
+        else:
+            plan.append({"action": "open_file", "path": folder_path})
+            
+        plan.extend([
+            {"action": "wait", "seconds": 1.5},
+            {"action": "hotkey", "keys": ["ctrl", "f"]},
+            {"action": "wait", "seconds": 0.5},
+            {"action": "type", "text": query},
+            {"action": "press", "key": "enter"}
+        ])
+        
+        return plan
+
+

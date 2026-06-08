@@ -63,6 +63,9 @@ async def execute_command(req: CommandRequest):
     """Receive a command, plan it with the AI, execute it on the desktop."""
     logger.info(f"Received command: {req.command}")
 
+    # Reset browser tab counter if no browser process is active
+    await _run_in_thread(executor._check_and_update_browser_status)
+
     if not req.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty.")
 
@@ -153,64 +156,84 @@ async def execute_command(req: CommandRequest):
             break
         await asyncio.sleep(0.3)   # non-blocking pause between steps
 
-    # 4. Screenshot + OCR (best-effort, won't crash the response)
-    visible_text = ""
-    try:
-        screenshot_path = await _run_in_thread(screen.capture)
-        visible_text     = await _run_in_thread(ocr.extract_text, screenshot_path)
-    except Exception as e:
-        logger.warning(f"Vision step failed (non-fatal): {e}")
-
-    # --- ADVANCED REFLECTION MODULE CHECK ---
-    # Only run reflection if executor thinks execution succeeded, to check for silent/visual failures
-    reflection_reason = ""
+    # --- CLOSE OLD TABS ---
     if status == "SUCCESS":
-        try:
-            logger.info("Running Reflection Module to verify execution success...")
-            logs_str = "\n".join(execution_logs)
-            reflection_res = await _run_in_thread(reflection.evaluate_success, req.command, logs_str, visible_text)
-            logger.info(f"Reflection Module returned: {reflection_res}")
-            
-            if "STATUS: FAILED" in reflection_res:
-                status = "FAILED"
-                reflection_reason = reflection_res.replace("STATUS: FAILED", "").strip()
-                logger.warning(f"Reflection flagged execution as FAILED. Reason: {reflection_reason}")
-        except Exception as e:
-            logger.warning(f"Reflection Module failed (non-fatal): {e}")
+        await _run_in_thread(executor.close_old_browser_tab)
 
-    # 5. Build response
+    # 4. Build response msg and speak completion immediately
     if status == "SUCCESS":
         response_msg = "Task completed successfully."
         tts.speak("Task completed.")
     else:
-        if reflection_reason:
-            # Clean up formatting for the user
-            clean_reason = reflection_reason.replace("\n", " ").replace("STATUS: FAILED", "").strip()
-            response_msg = f"Task verification failed: {clean_reason}"
-        else:
-            response_msg = "I encountered an error while executing the task."
+        response_msg = "I encountered an error while executing the task."
         tts.speak("There was an error executing the task.")
 
-    # 6. Persist to DB / memory (best-effort)
-    try:
-        db.save_task(
-            command=req.command,
-            ai_response=response_msg,
-            steps=str(plan),
-            status=status,
-        )
-        memory.add_memory(
-            f"Command: {req.command} | Plan: {plan} | Status: {status}"
-        )
-    except Exception as e:
-        logger.warning(f"Storage step failed (non-fatal): {e}")
+    # 5. Background task to run vision / reflection / db save / vector memory asynchronously
+    async def run_background_tasks(cmd_text, execution_logs_list, final_plan, initial_status, initial_response_msg):
+        status_to_save = initial_status
+        response_msg_to_save = initial_response_msg
+        visible_text = ""
 
+        # Screenshot + OCR (best-effort)
+        try:
+            screenshot_path = await _run_in_thread(screen.capture)
+            visible_text     = await _run_in_thread(ocr.extract_text, screenshot_path)
+        except Exception as e:
+            logger.warning(f"Background Vision step failed (non-fatal): {e}")
+
+        # Reflection
+        reflection_reason = ""
+        if status_to_save == "SUCCESS" and planner.gemini.is_available():
+            try:
+                logger.info("Running Reflection Module in background to verify execution success...")
+                logs_str = "\n".join(execution_logs_list)
+                reflection_res = await _run_in_thread(reflection.evaluate_success, cmd_text, logs_str, visible_text)
+                logger.info(f"Background Reflection Module returned: {reflection_res}")
+                
+                if "STATUS: FAILED" in reflection_res:
+                    status_to_save = "FAILED"
+                    reflection_reason = reflection_res.replace("STATUS: FAILED", "").strip()
+                    logger.warning(f"Background Reflection flagged execution as FAILED. Reason: {reflection_reason}")
+            except Exception as e:
+                logger.warning(f"Background Reflection Module failed (non-fatal): {e}")
+
+        if status_to_save == "FAILED" and reflection_reason:
+            clean_reason = reflection_reason.replace("\n", " ").replace("STATUS: FAILED", "").strip()
+            response_msg_to_save = f"Task verification failed: {clean_reason}"
+
+        # Persist to DB / memory (best-effort)
+        try:
+            await _run_in_thread(
+                db.save_task,
+                cmd_text,
+                response_msg_to_save,
+                str(final_plan),
+                status_to_save
+            )
+            await _run_in_thread(
+                memory.add_memory,
+                f"Command: {cmd_text} | Plan: {final_plan} | Status: {status_to_save}"
+            )
+        except Exception as e:
+            logger.warning(f"Background Storage step failed (non-fatal): {e}")
+
+    # Start background reflection/save
+    asyncio.create_task(
+        run_background_tasks(
+            req.command,
+            execution_logs.copy(),
+            plan,
+            status,
+            response_msg
+        )
+    )
+
+    # Return response immediately
     return {
         "status": status,
         "message": response_msg,
         "plan": plan,
         "logs": execution_logs,
-        "visible_text_snippet": visible_text[:300] if visible_text else "",
     }
 
 

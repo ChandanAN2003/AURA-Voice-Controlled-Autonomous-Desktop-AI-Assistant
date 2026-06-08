@@ -39,7 +39,7 @@ class OllamaClient:
             }
 
             logger.info(f"Sending request to Ollama model '{self.model}'...")
-            response = requests.post(self.url, json=payload, timeout=30)
+            response = requests.post(self.url, json=payload, timeout=90)
 
             if response.status_code == 200:
                 data = response.json()
